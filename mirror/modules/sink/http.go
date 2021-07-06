@@ -42,6 +42,7 @@ func init() {
 }
 
 type HTTPConfig struct {
+	FollowRedirect string      `json:"follow_redirect,omitempty"`
 	TargetURL *expr.StringExpr `json:"target_url,omitempty"`
 	Timeout   string           `json:"timeout,omitempty"`
 	Parallel  int              `json:"parallel"`
@@ -67,6 +68,18 @@ func NewHTTP(ctx *mirror.ModuleContext, cfg []byte) (mirror.Module, error) {
 		return nil, err
 	}
 
+	followRedirect, err := strconv.ParseBool(c.FollowRedirect)
+	if err != nil {
+		return nil, fmt.Errorf("follow_redirect: %w", err)
+	}
+
+	checkRedirect := nil
+	if followRedirect {
+		checkRedirect = func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+
 	timeout, err := time.ParseDuration(c.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("timeout: %w", err)
@@ -83,9 +96,7 @@ func NewHTTP(ctx *mirror.ModuleContext, cfg []byte) (mirror.Module, error) {
 		out:   make(chan mirror.Request),
 		tasks: make(chan mirror.Request),
 		client: &http.Client{
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+			CheckRedirect: checkRedirect,
 			Timeout: timeout,
 		},
 		maxWorkers: maxWorkers,
